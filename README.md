@@ -81,6 +81,25 @@ npm install
 npm install -g .
 ```
 
+### Development Workflow
+
+If you are making changes to the Qwen Code source and want those changes to be reflected in the globally installed `qwen` command, you need to rebuild the bundle and reinstall the package globally.
+
+A script is provided to automate this on Windows:
+
+```bash
+# On Windows
+.\update_global_qwen.bat
+```
+
+On macOS and Linux, you can run the following commands:
+
+```bash
+npm run bundle && npm install -g .
+```
+
+This will ensure that any other directory using the `qwen` command will use your updated code.
+
 ### Install globally with Homebrew (macOS/Linux)
 
 ```bash

@@ -31,9 +31,17 @@ esbuild
       '@lydell/node-pty-win32-x64',
     ],
     alias: {
+      '@qwen-code/qwen-code-core': path.resolve(
+        __dirname,
+        'packages/core/index.ts'
+      ),
+      '@qwen-code/qwen-code-test-utils': path.resolve(
+        __dirname,
+        'packages/test-utils/src/index.ts'
+      ),
       'is-in-ci': path.resolve(
         __dirname,
-        'packages/cli/src/patches/is-in-ci.ts',
+        'packages/cli/src/patches/is-in-ci.ts'
       ),
     },
     define: {

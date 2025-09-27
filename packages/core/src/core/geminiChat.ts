@@ -206,37 +206,7 @@ export class GeminiChat {
       return null;
     }
 
-    const currentModel = this.config.getModel();
-    const fallbackModel = DEFAULT_GEMINI_FLASH_MODEL;
-
-    // Don't fallback if already using Flash model
-    if (currentModel === fallbackModel) {
-      return null;
-    }
-
-    // Check if config has a fallback handler (set by CLI package)
-    const fallbackHandler = this.config.flashFallbackHandler;
-    if (typeof fallbackHandler === 'function') {
-      try {
-        const accepted = await fallbackHandler(
-          currentModel,
-          fallbackModel,
-          error,
-        );
-        if (accepted !== false && accepted !== null) {
-          await this.config.setModel(fallbackModel);
-          this.config.setFallbackMode(true);
-          return fallbackModel;
-        }
-        // Check if the model was switched manually in the handler
-        if (this.config.getModel() === fallbackModel) {
-          return null; // Model was switched but don't continue with current prompt
-        }
-      } catch (error) {
-        console.warn('Flash fallback handler failed:', error);
-      }
-    }
-
+    // Always return null to prevent model switching for LOGIN_WITH_GOOGLE
     return null;
   }
 
@@ -310,6 +280,7 @@ export class GeminiChat {
         onPersistent429: async (authType?: string, error?: unknown) =>
           await this.handleFlashFallback(authType, error),
         authType: this.config.getContentGeneratorConfig()?.authType,
+        maxAttempts: 0, // Set to 0 for indefinite retries
       });
 
       this.sendPromise = (async () => {
@@ -507,6 +478,7 @@ export class GeminiChat {
       onPersistent429: async (authType?: string, error?: unknown) =>
         await this.handleFlashFallback(authType, error),
       authType: this.config.getContentGeneratorConfig()?.authType,
+      maxAttempts: 0, // Set to 0 for indefinite retries
     });
 
     return this.processStreamResponse(streamResponse, userContent);

@@ -8,6 +8,7 @@ import type OpenAI from 'openai';
 import {
   type GenerateContentParameters,
   GenerateContentResponse,
+  type Content,
 } from '@google/genai';
 import type { Config } from '../../config/config.js';
 import type { ContentGeneratorConfig } from '../contentGenerator.js';
@@ -335,28 +336,59 @@ export class ContentGenerationPipeline {
     ) => Promise<T>,
   ): Promise<T> {
     const context = this.createRequestContext(userPromptId, isStreaming);
+    let attempts = 0;
+    const maxAttempts = 2; // Initial attempt + 1 retry
 
-    try {
-      const openaiRequest = await this.buildRequest(
-        request,
-        userPromptId,
-        isStreaming,
-      );
+    while (attempts < maxAttempts) {
+      try {
+        const openaiRequest = await this.buildRequest(
+          request,
+          userPromptId,
+          isStreaming,
+        );
 
-      const result = await executor(openaiRequest, context);
+        const result = await executor(openaiRequest, context);
 
-      context.duration = Date.now() - context.startTime;
-      return result;
-    } catch (error) {
-      // Use shared error handling logic
-      return await this.handleError(
-        error,
-        context,
-        request,
-        userPromptId,
-        isStreaming,
-      );
+        context.duration = Date.now() - context.startTime;
+        return result;
+      } catch (error) {
+        if (this.isTokenError(error) && attempts < maxAttempts - 1) {
+          attempts++;
+          // Modify the request to ask for a shorter response
+          const retryMessage: Content = {
+            role: 'user',
+            parts: [
+              {
+                text: "The previous request failed because it exceeded the model's token limit. Please provide a much shorter and more concise response. If you were asked to process a large file, use the `read_file` tool with the `limit` parameter to read the file in smaller chunks.",
+              },
+            ],
+          };
+
+          let newContents: Content[] = [];
+          if (Array.isArray(request.contents)) {
+            newContents = request.contents as Content[];
+          } else {
+            newContents = [request.contents as Content];
+          }
+
+          newContents.push(retryMessage);
+          request.contents = newContents;
+
+          continue; // Retry the request
+        }
+        // Use shared error handling logic for non-token errors or final attempt
+        return await this.handleError(
+          error,
+          context,
+          request,
+          userPromptId,
+          isStreaming,
+        );
+      }
     }
+
+    // This part should not be reachable, but as a fallback:
+    throw new Error('Max retry attempts reached.');
   }
 
   /**
@@ -399,6 +431,23 @@ export class ContentGenerationPipeline {
 
     await this.config.telemetryService.logError(context, error, openaiRequest);
     this.config.errorHandler.handle(error, context, request);
+  }
+
+  private isTokenError(error: unknown): boolean {
+    if (!error) return false;
+
+    const errorMessage =
+      error instanceof Error
+        ? error.message.toLowerCase()
+        : String(error).toLowerCase();
+
+    return (
+      errorMessage.includes('token') &&
+      (errorMessage.includes('exceeds') ||
+        errorMessage.includes('limit') ||
+        errorMessage.includes('maximum') ||
+        errorMessage.includes('context length'))
+    );
   }
 
   /**

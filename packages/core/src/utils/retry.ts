@@ -88,11 +88,12 @@ export async function retryWithBackoff<T>(
     ...options,
   };
 
+  const indefinite = maxAttempts === 0;
   let attempt = 0;
   let currentDelay = initialDelayMs;
   let consecutive429Count = 0;
 
-  while (attempt < maxAttempts) {
+  while (indefinite || attempt < maxAttempts) {
     attempt++;
     try {
       return await fn();
@@ -115,9 +116,6 @@ export async function retryWithBackoff<T>(
             currentDelay = initialDelayMs;
             // With the model updated, we continue to the next attempt
             continue;
-          } else {
-            // Fallback handler returned null/false, meaning don't continue - stop retry process
-            throw error;
           }
         } catch (fallbackError) {
           // If fallback fails, continue with original error
@@ -142,9 +140,6 @@ export async function retryWithBackoff<T>(
             currentDelay = initialDelayMs;
             // With the model updated, we continue to the next attempt
             continue;
-          } else {
-            // Fallback handler returned null/false, meaning don't continue - stop retry process
-            throw error;
           }
         } catch (fallbackError) {
           // If fallback fails, continue with original error
@@ -188,9 +183,6 @@ export async function retryWithBackoff<T>(
             currentDelay = initialDelayMs;
             // With the model updated, we continue to the next attempt
             continue;
-          } else {
-            // Fallback handler returned null/false, meaning don't continue - stop retry process
-            throw error;
           }
         } catch (fallbackError) {
           // If fallback fails, continue with original error
@@ -198,36 +190,36 @@ export async function retryWithBackoff<T>(
         }
       }
 
-      // Check if we've exhausted retries or shouldn't retry
-      if (attempt >= maxAttempts || !shouldRetry(error as Error)) {
+      // If we shouldn't retry, log it and throw the original error
+      if (!shouldRetry(error as Error)) {
+        console.error(
+          'Non-retriable error encountered. The operation will not be retried. Original error:',
+          error,
+        );
         throw error;
       }
 
-      const { delayDurationMs, errorStatus: delayErrorStatus } =
-        getDelayDurationAndStatus(error);
-
-      if (delayDurationMs > 0) {
-        // Respect Retry-After header if present and parsed
-        console.warn(
-          `Attempt ${attempt} failed with status ${delayErrorStatus ?? 'unknown'}. Retrying after explicit delay of ${delayDurationMs}ms...`,
-          error,
-        );
-        await delay(delayDurationMs);
-        // Reset currentDelay for next potential non-429 error, or if Retry-After is not present next time
-        currentDelay = initialDelayMs;
-      } else {
-        // Fall back to exponential backoff with jitter
-        logRetryAttempt(attempt, error, errorStatus);
-        // Add jitter: +/- 30% of currentDelay
-        const jitter = currentDelay * 0.3 * (Math.random() * 2 - 1);
-        const delayWithJitter = Math.max(0, currentDelay + jitter);
-        await delay(delayWithJitter);
-        currentDelay = Math.min(maxDelayMs, currentDelay * 2);
+      // If we've exhausted retries, throw a specific error
+      if (!indefinite && attempt >= maxAttempts) {
+        throw new Error('Retry attempts exhausted');
       }
+
+      const { delayDurationMs } = getDelayDurationAndStatus(error);
+
+      // Fall back to exponential backoff with jitter
+      logRetryAttempt(attempt, error, errorStatus);
+      // Add jitter: +/- 30% of currentDelay
+      const jitter = currentDelay * 0.3 * (Math.random() * 2 - 1);
+      const delayWithJitter = Math.max(0, currentDelay + jitter);
+      const totalDelay =
+        delayDurationMs > 0
+          ? Math.max(delayDurationMs, delayWithJitter)
+          : delayWithJitter;
+      await delay(Math.min(totalDelay, maxDelayMs));
+      currentDelay = Math.min(maxDelayMs, currentDelay * 2);
     }
   }
-  // This line should theoretically be unreachable due to the throw in the catch block.
-  // Added for type safety and to satisfy the compiler that a promise is always returned.
+  // This line should not be reached.
   throw new Error('Retry attempts exhausted');
 }
 
@@ -299,19 +291,14 @@ function getRetryAfterDelayMs(error: unknown): number {
 /**
  * Determines the delay duration based on the error, prioritizing Retry-After header.
  * @param error The error object.
- * @returns An object containing the delay duration in milliseconds and the error status.
+ * @returns An object containing the delay duration in milliseconds.
  */
 function getDelayDurationAndStatus(error: unknown): {
   delayDurationMs: number;
-  errorStatus: number | undefined;
 } {
-  const errorStatus = getErrorStatus(error);
-  let delayDurationMs = 0;
-
-  if (errorStatus === 429) {
-    delayDurationMs = getRetryAfterDelayMs(error);
-  }
-  return { delayDurationMs, errorStatus };
+  return {
+    delayDurationMs: getRetryAfterDelayMs(error),
+  };
 }
 
 /**

@@ -87,11 +87,7 @@ import {
   isEditorAvailable,
   getErrorMessage,
   AuthType,
-  logFlashFallback,
-  FlashFallbackEvent,
   ideContext,
-  isProQuotaExceededError,
-  isGenericQuotaExceededError,
   UserTierId,
 } from '@qwen-code/qwen-code-core';
 import type { IdeIntegrationNudgeResult } from './IdeIntegrationNudge.js';
@@ -173,6 +169,7 @@ export const AppWrapper = (props: AppProps) => {
 };
 
 const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
+  const buildTimestamp = new Date().toLocaleTimeString();
   const isFocused = useFocus();
   useBracketedPaste();
   const [updateInfo, setUpdateInfo] = useState<UpdateObject | null>(null);
@@ -499,82 +496,8 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
       fallbackModel: string,
       error?: unknown,
     ): Promise<boolean> => {
-      let message: string;
-
-      if (
-        config.getContentGeneratorConfig().authType ===
-        AuthType.LOGIN_WITH_GOOGLE
-      ) {
-        // Use actual user tier if available; otherwise, default to FREE tier behavior (safe default)
-        const isPaidTier =
-          userTier === UserTierId.LEGACY || userTier === UserTierId.STANDARD;
-
-        // Check if this is a Pro quota exceeded error
-        if (error && isProQuotaExceededError(error)) {
-          if (isPaidTier) {
-            message = `⚡ You have reached your daily ${currentModel} quota limit.
-⚡ Automatically switching from ${currentModel} to ${fallbackModel} for the remainder of this session.
-⚡ To continue accessing the ${currentModel} model today, consider using /auth to switch to using a paid API key from AI Studio at https://aistudio.google.com/apikey`;
-          } else {
-            message = `⚡ You have reached your daily ${currentModel} quota limit.
-⚡ Automatically switching from ${currentModel} to ${fallbackModel} for the remainder of this session.
-⚡ To increase your limits, upgrade to a Gemini Code Assist Standard or Enterprise plan with higher limits at https://goo.gle/set-up-gemini-code-assist
-⚡ Or you can utilize a Gemini API Key. See: https://goo.gle/gemini-cli-docs-auth#gemini-api-key
-⚡ You can switch authentication methods by typing /auth`;
-          }
-        } else if (error && isGenericQuotaExceededError(error)) {
-          if (isPaidTier) {
-            message = `⚡ You have reached your daily quota limit.
-⚡ Automatically switching from ${currentModel} to ${fallbackModel} for the remainder of this session.
-⚡ To continue accessing the ${currentModel} model today, consider using /auth to switch to using a paid API key from AI Studio at https://aistudio.google.com/apikey`;
-          } else {
-            message = `⚡ You have reached your daily quota limit.
-⚡ Automatically switching from ${currentModel} to ${fallbackModel} for the remainder of this session.
-⚡ To increase your limits, upgrade to a Gemini Code Assist Standard or Enterprise plan with higher limits at https://goo.gle/set-up-gemini-code-assist
-⚡ Or you can utilize a Gemini API Key. See: https://goo.gle/gemini-cli-docs-auth#gemini-api-key
-⚡ You can switch authentication methods by typing /auth`;
-          }
-        } else {
-          if (isPaidTier) {
-            // Default fallback message for other cases (like consecutive 429s)
-            message = `⚡ Automatically switching from ${currentModel} to ${fallbackModel} for faster responses for the remainder of this session.
-⚡ Possible reasons for this are that you have received multiple consecutive capacity errors or you have reached your daily ${currentModel} quota limit
-⚡ To continue accessing the ${currentModel} model today, consider using /auth to switch to using a paid API key from AI Studio at https://aistudio.google.com/apikey`;
-          } else {
-            // Default fallback message for other cases (like consecutive 429s)
-            message = `⚡ Automatically switching from ${currentModel} to ${fallbackModel} for faster responses for the remainder of this session.
-⚡ Possible reasons for this are that you have received multiple consecutive capacity errors or you have reached your daily ${currentModel} quota limit
-⚡ To increase your limits, upgrade to a Gemini Code Assist Standard or Enterprise plan with higher limits at https://goo.gle/set-up-gemini-code-assist
-⚡ Or you can utilize a Gemini API Key. See: https://goo.gle/gemini-cli-docs-auth#gemini-api-key
-⚡ You can switch authentication methods by typing /auth`;
-          }
-        }
-
-        // Add message to UI history
-        addItem(
-          {
-            type: MessageType.INFO,
-            text: message,
-          },
-          Date.now(),
-        );
-
-        // Set the flag to prevent tool continuation
-        setModelSwitchedFromQuotaError(true);
-        // Set global quota error flag to prevent Flash model calls
-        config.setQuotaErrorOccurred(true);
-      }
-
-      // Switch model for future use but return false to stop current retry
-      config.setModel(fallbackModel).catch((error) => {
-        console.error('Failed to switch to fallback model:', error);
-      });
-      config.setFallbackMode(true);
-      logFlashFallback(
-        config,
-        new FlashFallbackEvent(config.getContentGeneratorConfig().authType!),
-      );
-      return false; // Don't continue with current prompt
+      // Keep retrying with the same model.
+      return true;
     };
 
     config.setFlashFallbackHandler(flashFallbackHandler);
@@ -1632,6 +1555,8 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
               nightly={nightly}
               vimMode={vimModeEnabled ? vimMode : undefined}
               isTrustedFolder={isTrustedFolderState}
+              buildTimestamp={buildTimestamp}
+              isWaitingForInput={isInputActive}
             />
           )}
         </Box>

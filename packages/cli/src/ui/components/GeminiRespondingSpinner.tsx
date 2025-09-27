@@ -20,7 +20,7 @@ interface GeminiRespondingSpinnerProps {
    * Optional string to display when not in Responding state.
    * If not provided and not Responding, renders null.
    */
-  nonRespondingDisplay?: string;
+  nonRespondingDisplay?: React.ReactNode;
   spinnerType?: SpinnerName;
 }
 

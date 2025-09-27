@@ -15,6 +15,7 @@ import Gradient from 'ink-gradient';
 import { MemoryUsageDisplay } from './MemoryUsageDisplay.js';
 import { ContextUsageDisplay } from './ContextUsageDisplay.js';
 import { DebugProfiler } from './DebugProfiler.js';
+import { WaitingForInputIndicator } from './WaitingForInputIndicator.js';
 
 import { useTerminalSize } from '../hooks/useTerminalSize.js';
 import { isNarrowWidth } from '../utils/isNarrowWidth.js';
@@ -33,6 +34,8 @@ interface FooterProps {
   nightly: boolean;
   vimMode?: string;
   isTrustedFolder?: boolean;
+  buildTimestamp?: string;
+  isWaitingForInput?: boolean;
 }
 
 export const Footer: React.FC<FooterProps> = ({
@@ -49,6 +52,8 @@ export const Footer: React.FC<FooterProps> = ({
   nightly,
   vimMode,
   isTrustedFolder,
+  buildTimestamp,
+  isWaitingForInput,
 }) => {
   const { columns: terminalWidth } = useTerminalSize();
 
@@ -68,6 +73,7 @@ export const Footer: React.FC<FooterProps> = ({
       alignItems={isNarrow ? 'flex-start' : 'center'}
     >
       <Box>
+        {isWaitingForInput && <WaitingForInputIndicator />}
         {debugMode && <DebugProfiler />}
         {vimMode && <Text color={theme.text.secondary}>[{vimMode}] </Text>}
         {nightly ? (
@@ -132,6 +138,7 @@ export const Footer: React.FC<FooterProps> = ({
             model={model}
           />
         </Text>
+        {buildTimestamp && <Text> | {buildTimestamp}</Text>}
         {corgiMode && (
           <Text>
             <Text color={theme.ui.symbol}>| </Text>

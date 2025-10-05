@@ -635,18 +635,36 @@ export class GeminiClient {
       requestToSent = [...systemReminders, ...requestToSent];
     }
 
-    const resultStream = turn.run(requestToSent, signal);
-    for await (const event of resultStream) {
-      if (!this.config.getSkipLoopDetection()) {
-        if (this.loopDetector.addAndCheck(event)) {
-          yield { type: GeminiEventType.LoopDetected };
+    try {
+      const resultStream = turn.run(requestToSent, signal);
+      for await (const event of resultStream) {
+        if (!this.config.getSkipLoopDetection()) {
+          if (this.loopDetector.addAndCheck(event)) {
+            yield { type: GeminiEventType.LoopDetected };
+            return turn;
+          }
+        }
+        yield event;
+        if (event.type === GeminiEventType.Error) {
           return turn;
         }
       }
-      yield event;
-      if (event.type === GeminiEventType.Error) {
-        return turn;
+    } catch (error) {
+      if (error instanceof Error && error.message.includes('token count exceeds')) {
+        const compressed = await this.tryCompressChat(prompt_id, true);
+        if (compressed.compressionStatus === CompressionStatus.COMPRESSED) {
+          yield { type: GeminiEventType.ChatCompressed, value: compressed };
+          yield* this.sendMessageStream(
+            request,
+            signal,
+            prompt_id,
+            boundedTurns - 1,
+            initialModel,
+          );
+          return turn;
+        }
       }
+      throw error;
     }
     if (!turn.pendingToolCalls.length && signal && !signal.aborted) {
       // Check if model was switched during the call (likely due to quota error)
@@ -730,26 +748,27 @@ export class GeminiClient {
         },
       ];
 
-      const apiCall = () =>
-        this.getContentGenerator().generateContent(
-          {
-            model: modelToUse,
-            config: {
-              ...requestConfig,
+      const result = await retryWithBackoff(
+        () =>
+          this.getContentGenerator().generateContent(
+            {
+              model: modelToUse,
+              contents,
               tools,
+              ...requestConfig,
             },
-            contents,
-          },
-          this.lastPromptId,
-        );
-
-      const result = await retryWithBackoff(apiCall, {
-        onPersistent429: async (authType?: string, error?: unknown) =>
-          await this.handleFlashFallback(authType, error),
-        authType: this.config.getContentGeneratorConfig()?.authType,
-        maxAttempts: 0, // Set to 0 for indefinite retries
-      });
-      const functionCalls = getFunctionCalls(result);
+            this.config.getSessionId(),
+          ),
+        {
+          onPersistent429: async (authType?: string, error?: unknown) =>
+            await this.handleFlashFallback(authType, error),
+          authType: this.config.getContentGeneratorConfig()?.authType,
+          maxAttempts: 0, // Set to 0 for indefinite retries
+        },
+      );
+      const functionCalls = getFunctionCalls(
+        result as GenerateContentResponse,
+      );
       if (functionCalls && functionCalls.length > 0) {
         const functionCall = functionCalls.find(
           (call) => call.name === 'respond_in_schema',
@@ -808,23 +827,24 @@ export class GeminiClient {
         systemInstruction: finalSystemInstruction,
       };
 
-      const apiCall = () =>
-        this.getContentGenerator().generateContent(
-          {
-            model: modelToUse,
-            config: requestConfig,
-            contents,
-          },
-          this.lastPromptId,
-        );
-
-      const result = await retryWithBackoff(apiCall, {
-        onPersistent429: async (authType?: string, error?: unknown) =>
-          await this.handleFlashFallback(authType, error),
-        authType: this.config.getContentGeneratorConfig()?.authType,
-        maxAttempts: 0, // Set to 0 for indefinite retries
-      });
-      return result;
+      const result = await retryWithBackoff(
+        () =>
+          this.getContentGenerator().generateContent(
+            {
+              model: modelToUse,
+              contents,
+              ...requestConfig,
+            },
+            this.config.getSessionId(),
+          ),
+        {
+          onPersistent429: async (authType?: string, error?: unknown) =>
+            await this.handleFlashFallback(authType, error),
+          authType: this.config.getContentGeneratorConfig()?.authType,
+          maxAttempts: 0, // Set to 0 for indefinite retries
+        },
+      );
+      return result as GenerateContentResponse;
     } catch (error: unknown) {
       if (abortSignal.aborted) {
         throw error;

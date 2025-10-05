@@ -30,7 +30,7 @@ export const ToolConfirmationMessage = ({ confirmationDetails, config, isFocused
     const handleSelect = (item) => handleConfirm(item);
     let bodyContent = null; // Removed contextDisplay here
     let question;
-    const options = new Array();
+    const options = [];
     // Body content is now the DiffRenderer, passing filename to it
     // The bordered box is removed from here and handled within DiffRenderer
     function availableBodyContentHeight() {

@@ -368,7 +368,7 @@ const ToolCallItem: React.FC<{
   };
   compact?: boolean;
 }> = ({ toolCall, compact = false }) => {
-  const STATUS_INDICATOR_WIDTH = 3;
+  const STATUS_INDICATOR_WIDTH = 8;
 
   // Map subagent status to ToolCallStatus-like display
   const statusIcon = React.useMemo(() => {

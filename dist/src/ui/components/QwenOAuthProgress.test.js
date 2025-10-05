@@ -72,7 +72,7 @@ describe('QwenOAuthProgress', () => {
         it('should display correct URL in Static component when QR code is generated', async () => {
             const qrcode = await import('qrcode-terminal');
             const mockGenerate = vi.mocked(qrcode.default.generate);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             let qrCallback = null;
             mockGenerate.mockImplementation((url, options, callback) => {
                 qrCallback = callback;
@@ -178,7 +178,7 @@ describe('QwenOAuthProgress', () => {
         it('should display QR code in Static component when available', async () => {
             const qrcode = await import('qrcode-terminal');
             const mockGenerate = vi.mocked(qrcode.default.generate);
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+             
             let qrCallback = null;
             mockGenerate.mockImplementation((url, options, callback) => {
                 qrCallback = callback;

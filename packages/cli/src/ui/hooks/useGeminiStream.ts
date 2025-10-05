@@ -101,6 +101,7 @@ export const useGeminiStream = (
   const turnCancelledRef = useRef(false);
   const isSubmittingQueryRef = useRef(false);
   const [isResponding, setIsResponding] = useState<boolean>(false);
+  const [isWaitingForRetry, setIsWaitingForRetry] = useState<boolean>(false);
   const [thought, setThought] = useState<ThoughtSummary | null>(null);
   const [pendingHistoryItemRef, setPendingHistoryItem] =
     useStateAndRef<HistoryItemWithoutId | null>(null);
@@ -391,6 +392,7 @@ export const useGeminiStream = (
       currentGeminiMessageBuffer: string,
       userMessageTimestamp: number,
     ): string => {
+      setIsWaitingForRetry(false);
       if (turnCancelledRef.current) {
         // Prevents additional output after a user initiated cancel.
         return '';
@@ -642,6 +644,7 @@ export const useGeminiStream = (
             handleSessionTokenLimitExceededEvent(event.value);
             break;
           case ServerGeminiEventType.Finished:
+            setIsWaitingForRetry(false);
             handleFinishedEvent(
               event as ServerGeminiFinishedEvent,
               userMessageTimestamp,
@@ -653,7 +656,7 @@ export const useGeminiStream = (
             loopDetectedRef.current = true;
             break;
           case ServerGeminiEventType.Retry:
-            // Will add the missing logic later
+            setIsWaitingForRetry(true);
             break;
           default: {
             // enforces exhaustive switch-case
@@ -757,6 +760,13 @@ export const useGeminiStream = (
           abortSignal,
           prompt_id!,
         );
+
+        // Add an onerror handler to the EventSource
+        const es = stream.getEventSource();
+        es.onerror = () => {
+          setIsWaitingForRetry(true);
+        };
+
         const processingStatus = await processGeminiStreamEvents(
           stream,
           userMessageTimestamp,
@@ -1090,5 +1100,6 @@ export const useGeminiStream = (
     pendingHistoryItems,
     thought,
     cancelOngoingRequest,
+    isWaitingForRetry,
   };
 };

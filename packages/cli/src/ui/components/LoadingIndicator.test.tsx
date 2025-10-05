@@ -54,6 +54,8 @@ describe('<LoadingIndicator />', () => {
   const defaultProps = {
     currentLoadingPhrase: 'Loading...',
     elapsedTime: 5,
+    isWaitingForRetry: false,
+    retryElapsedTime: 0,
   };
 
   it('should not render when streamingState is Idle', () => {
@@ -77,6 +79,7 @@ describe('<LoadingIndicator />', () => {
 
   it('should render spinner (static), phrase but no time/cancel when streamingState is WaitingForConfirmation', () => {
     const props = {
+      ...defaultProps,
       currentLoadingPhrase: 'Confirm action',
       elapsedTime: 10,
     };
@@ -93,6 +96,7 @@ describe('<LoadingIndicator />', () => {
 
   it('should display the currentLoadingPhrase correctly', () => {
     const props = {
+      ...defaultProps,
       currentLoadingPhrase: 'Processing data...',
       elapsedTime: 3,
     };
@@ -105,6 +109,7 @@ describe('<LoadingIndicator />', () => {
 
   it('should display the elapsedTime correctly when Responding', () => {
     const props = {
+      ...defaultProps,
       currentLoadingPhrase: 'Working...',
       elapsedTime: 60,
     };
@@ -117,6 +122,7 @@ describe('<LoadingIndicator />', () => {
 
   it('should display the elapsedTime correctly in human-readable format', () => {
     const props = {
+      ...defaultProps,
       currentLoadingPhrase: 'Working...',
       elapsedTime: 125,
     };
@@ -149,6 +155,8 @@ describe('<LoadingIndicator />', () => {
         <LoadingIndicator
           currentLoadingPhrase="Now Responding"
           elapsedTime={2}
+          isWaitingForRetry={false}
+          retryElapsedTime={0}
         />
       </StreamingContext.Provider>,
     );
@@ -163,6 +171,8 @@ describe('<LoadingIndicator />', () => {
         <LoadingIndicator
           currentLoadingPhrase="Please Confirm"
           elapsedTime={15}
+          isWaitingForRetry={false}
+          retryElapsedTime={0}
         />
       </StreamingContext.Provider>,
     );
@@ -183,6 +193,7 @@ describe('<LoadingIndicator />', () => {
 
   it('should display fallback phrase if thought is empty', () => {
     const props = {
+      ...defaultProps,
       thought: null,
       currentLoadingPhrase: 'Loading...',
       elapsedTime: 5,
@@ -197,6 +208,7 @@ describe('<LoadingIndicator />', () => {
 
   it('should display the subject of a thought', () => {
     const props = {
+      ...defaultProps,
       thought: {
         subject: 'Thinking about something...',
         description: 'and other stuff.',
@@ -217,6 +229,7 @@ describe('<LoadingIndicator />', () => {
 
   it('should prioritize thought.subject over currentLoadingPhrase', () => {
     const props = {
+      ...defaultProps,
       thought: {
         subject: 'This should be displayed',
         description: 'A description',

@@ -5,7 +5,8 @@
  */
 
 import type { ThoughtSummary } from '@qwen-code/qwen-code-core';
-import type React from 'react';
+import { useMemo } from 'react';
+
 import { Box, Text } from 'ink';
 import { Colors } from '../colors.js';
 import { useStreamingContext } from '../contexts/StreamingContext.js';
@@ -20,6 +21,8 @@ interface LoadingIndicatorProps {
   elapsedTime: number;
   rightContent?: React.ReactNode;
   thought?: ThoughtSummary | null;
+  isWaitingForRetry: boolean;
+  retryElapsedTime: number;
 }
 
 export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({
@@ -27,21 +30,31 @@ export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({
   elapsedTime,
   rightContent,
   thought,
+  isWaitingForRetry,
+  retryElapsedTime,
 }) => {
   const streamingState = useStreamingContext();
   const { columns: terminalWidth } = useTerminalSize();
   const isNarrow = isNarrowWidth(terminalWidth);
+
+  const cancelAndTimerContent = useMemo(() => {
+    const mainTimerText = `(esc to cancel, ${elapsedTime < 60 ? `${elapsedTime}s` : formatDuration(elapsedTime * 1000)})`;
+    return <Text color={Colors.Gray}>{mainTimerText}</Text>;
+  }, [elapsedTime]);
+
+  const retryTimerContent = useMemo(() => {
+    if (!isWaitingForRetry) {
+      return null;
+    }
+    const retryTimerText = retryElapsedTime < 60 ? `${retryElapsedTime}s` : formatDuration(retryElapsedTime * 1000);
+    return <Text color={Colors.AccentRed}> {retryTimerText}</Text>;
+  }, [isWaitingForRetry, retryElapsedTime]);
 
   if (streamingState === StreamingState.Idle) {
     return null;
   }
 
   const primaryText = thought?.subject || currentLoadingPhrase;
-
-  const cancelAndTimerContent =
-    streamingState !== StreamingState.WaitingForConfirmation
-      ? `(esc to cancel, ${elapsedTime < 60 ? `${elapsedTime}s` : formatDuration(elapsedTime * 1000)})`
-      : null;
 
   return (
     <Box paddingLeft={0} flexDirection="column">
@@ -66,18 +79,12 @@ export const LoadingIndicator: React.FC<LoadingIndicatorProps> = ({
           {primaryText && (
             <Text color={Colors.AccentPurple}>{primaryText}</Text>
           )}
-          {!isNarrow && cancelAndTimerContent && (
-            <Text color={Colors.Gray}> {cancelAndTimerContent}</Text>
-          )}
+          {!isNarrow && cancelAndTimerContent && <Box>{cancelAndTimerContent}{retryTimerContent}</Box>}
         </Box>
         {!isNarrow && <Box flexGrow={1}>{/* Spacer */}</Box>}
         {!isNarrow && rightContent && <Box>{rightContent}</Box>}
       </Box>
-      {isNarrow && cancelAndTimerContent && (
-        <Box>
-          <Text color={Colors.Gray}>{cancelAndTimerContent}</Text>
-        </Box>
-      )}
+      {isNarrow && cancelAndTimerContent && <Box>{cancelAndTimerContent}{retryTimerContent}</Box>}
       {isNarrow && rightContent && <Box>{rightContent}</Box>}
     </Box>
   );

@@ -80,15 +80,15 @@ import { HistoryItemDisplay } from './components/HistoryItemDisplay.js';
 import { ContextSummaryDisplay } from './components/ContextSummaryDisplay.js';
 import { useHistory } from './hooks/useHistoryManager.js';
 import process from 'node:process';
-import type { EditorType, Config, IdeContext } from '@qwen-code/qwen-code-core';
+import type { EditorType, Config, IdeContext ,
+  UserTierId} from '@qwen-code/qwen-code-core';
 import {
   ApprovalMode,
   getAllGeminiMdFilenames,
   isEditorAvailable,
   getErrorMessage,
   AuthType,
-  ideContext,
-  UserTierId,
+  ideContext
 } from '@qwen-code/qwen-code-core';
 import type { IdeIntegrationNudgeResult } from './IdeIntegrationNudge.js';
 import { IdeIntegrationNudge } from './IdeIntegrationNudge.js';
@@ -125,6 +125,7 @@ import { isNarrowWidth } from './utils/isNarrowWidth.js';
 import { useWorkspaceMigration } from './hooks/useWorkspaceMigration.js';
 import { WorkspaceMigrationDialog } from './components/WorkspaceMigrationDialog.js';
 import { WelcomeBackDialog } from './components/WelcomeBackDialog.js';
+import { useTimer } from './hooks/useTimer.js';
 
 // Maximum number of queued messages to display in UI to prevent performance issues
 const MAX_DISPLAYED_QUEUED_MESSAGES = 3;
@@ -491,15 +492,14 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
 
   // Set up Flash fallback handler
   useEffect(() => {
-    const flashFallbackHandler = async (
-      currentModel: string,
-      fallbackModel: string,
-      error?: unknown,
-    ): Promise<boolean> => {
-      // Keep retrying with the same model.
-      return true;
-    };
-
+        const flashFallbackHandler = async (
+          // currentModel: string,
+          // fallbackModel: string,
+          // error?: unknown,
+        ): Promise<boolean> =>
+          // Keep retrying with the same model.
+           true
+        ;
     config.setFlashFallbackHandler(flashFallbackHandler);
   }, [config, addItem, userTier]);
 
@@ -680,6 +680,7 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
     pendingHistoryItems: pendingGeminiHistoryItems,
     thought,
     cancelOngoingRequest,
+    isWaitingForRetry,
   } = useGeminiStream(
     config.getGeminiClient(),
     history,
@@ -810,6 +811,7 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
 
   const { elapsedTime, currentLoadingPhrase } =
     useLoadingIndicator(streamingState);
+  const retryElapsedTime = useTimer(isWaitingForRetry, isWaitingForRetry);
   const showAutoAcceptIndicator = useAutoAcceptIndicator({ config, addItem });
 
   const handleExit = useCallback(
@@ -985,8 +987,7 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
   }, [history, logger]);
 
   const isInputActive =
-    (streamingState === StreamingState.Idle ||
-      streamingState === StreamingState.Responding) &&
+    streamingState === StreamingState.Idle &&
     !initError &&
     !isProcessing &&
     !showWelcomeBackDialog;
@@ -1390,6 +1391,8 @@ const App = ({ config, settings, startupWarnings = [], version }: AppProps) => {
                     : currentLoadingPhrase
                 }
                 elapsedTime={elapsedTime}
+                isWaitingForRetry={isWaitingForRetry}
+                retryElapsedTime={retryElapsedTime}
               />
 
               {/* Display queued messages below loading indicator */}

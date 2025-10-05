@@ -16,6 +16,11 @@ import type { OpenAICompatibleProvider } from './provider/index.js';
 import { OpenAIContentConverter } from './converter.js';
 import type { TelemetryService, RequestContext } from './telemetryService.js';
 import type { ErrorHandler } from './errorHandler.js';
+import { tokenLimit } from '../tokenLimits.js';
+import { ToolNames } from '../../tools/tool-names.js';
+import { ToolErrorType } from '../../tools/tool-error.js';
+import type { ReadFileToolParams } from '../../tools/read-file.js';
+import { DEFAULT_MAX_LINES_TEXT_FILE } from '../../utils/fileUtils.js';
 
 export interface PipelineConfig {
   cliConfig: Config;
@@ -336,6 +341,12 @@ export class ContentGenerationPipeline {
     let attempts = 0;
     const maxAttempts = 2; // Initial attempt + 1 retry
 
+    // Map to track file read attempts for chunking
+    const fileReadAttempts = new Map<
+      string,
+      { offset: number; limit: number; attempts: number }
+    >();
+
     while (attempts < maxAttempts) {
       try {
         const openaiRequest = await this.buildRequest(
@@ -349,6 +360,71 @@ export class ContentGenerationPipeline {
         context.duration = Date.now() - context.startTime;
         return result;
       } catch (error) {
+        // Check for FILE_TOO_LARGE error from tool execution
+        const fileTooLargeError = this.extractFileTooLargeError(
+          error as GenerateContentResponse, // Assuming error can be a GenerateContentResponse
+        );
+
+        if (fileTooLargeError) {
+          const { filePath, toolCallId } = fileTooLargeError;
+          let fileAttempt = fileReadAttempts.get(filePath);
+
+          if (!fileAttempt) {
+            fileAttempt = { offset: 0, limit: DEFAULT_MAX_LINES_TEXT_FILE, attempts: 0 };
+            fileReadAttempts.set(filePath, fileAttempt);
+          }
+
+          if (fileAttempt.attempts < 5) {
+            // Limit to 5 chunks for now
+            fileAttempt.attempts++;
+            fileAttempt.offset += fileAttempt.limit; // Move to the next chunk
+
+            // Find the original tool call in the request and modify it
+            let foundAndModified = false;
+            if (Array.isArray(request.contents)) {
+              for (const content of request.contents) {
+                if (typeof content === 'object' && content !== null && 'parts' in content && Array.isArray(content.parts)) {
+                  for (const part of content.parts) {
+                    if (
+                      'functionCall' in part &&
+                      part.functionCall?.name === ToolNames.READ_FILE &&
+                      part.functionCall?.id === toolCallId
+                    ) {
+                      // Modify the existing functionCall to include offset and limit
+                      part.functionCall.args = {
+                        ...part.functionCall.args,
+                        offset: fileAttempt.offset,
+                        limit: fileAttempt.limit,
+                      };
+                      foundAndModified = true;
+                      break;
+                    }
+                  }
+                }
+                if (foundAndModified) break;
+              }
+            }
+
+            if (foundAndModified) {
+              // Add a message to the model indicating a retry with chunking
+              const retryMessage: Content = {
+                role: 'user',
+                parts: [
+                  {
+                    text: `The previous attempt to read file '${filePath}' failed because it was too large. Retrying with offset: ${fileAttempt.offset} and limit: ${fileAttempt.limit}.`,
+                  },
+                ],
+              };
+              if (Array.isArray(request.contents)) {
+                request.contents.push(retryMessage);
+              } else {
+                request.contents = [request.contents as Content, retryMessage];
+              }
+              continue; // Retry the request
+            }
+          }
+        }
+
         if (this.isTokenError(error) && attempts < maxAttempts - 1) {
           attempts++;
           // Modify the request to ask for a shorter response
@@ -369,6 +445,32 @@ export class ContentGenerationPipeline {
           }
 
           newContents.push(retryMessage);
+
+          // Truncate the history to fit within the token limit
+          const model = this.contentGeneratorConfig.model;
+          const limit = tokenLimit(model);
+          let totalTokens = 0;
+          for (const content of newContents) {
+            if (typeof content === 'object' && content !== null && 'parts' in content && Array.isArray(content.parts)) {
+              for (const part of content.parts) {
+                if (part.text) {
+                  totalTokens += Math.ceil(part.text.length / 4);
+                }
+              }
+            }
+          }
+
+          while (totalTokens > limit && newContents.length > 1) {
+            const removedContent = newContents.shift();
+            if (removedContent && typeof removedContent === 'object' && removedContent !== null && 'parts' in removedContent && Array.isArray(removedContent.parts)) {
+              for (const part of removedContent.parts) {
+                if (part.text) {
+                  totalTokens -= Math.ceil(part.text.length / 4);
+                }
+              }
+            }
+          }
+
           request.contents = newContents;
 
           continue; // Retry the request
@@ -462,5 +564,44 @@ export class ContentGenerationPipeline {
       duration: 0,
       isStreaming,
     };
+  }
+
+  private extractFileTooLargeError(
+    response: GenerateContentResponse,
+  ): { toolCallId: string; filePath: string } | null {
+    if (!response.candidates) {
+      return null;
+    }
+
+    for (const candidate of response.candidates) {
+      if (candidate.content?.parts) {
+        for (const part of candidate.content.parts) {
+          if ('functionResponse' in part && part.functionResponse) {
+            const funcResponse = part.functionResponse;
+            if (
+              funcResponse.name === ToolNames.READ_FILE &&
+              typeof funcResponse.response === 'object' &&
+              funcResponse.response !== null &&
+              'errorType' in funcResponse.response &&
+              (funcResponse.response as { errorType: string }).errorType ===
+                ToolErrorType.FILE_TOO_LARGE
+            ) {
+              // Assuming the original request's arguments are available in the response
+              // This might need adjustment based on how the tool output is structured
+              const originalArgs = (funcResponse.response as {
+                originalArgs?: ReadFileToolParams;
+              }).originalArgs;
+              if (originalArgs?.absolute_path && funcResponse.id) {
+                return {
+                  toolCallId: funcResponse.id,
+                  filePath: originalArgs.absolute_path,
+                };
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
   }
 }

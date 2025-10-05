@@ -34,6 +34,8 @@ export default tseslint.config(
       'bundle/**',
       'package/bundle/**',
       '.integration-tests/**',
+      'dist',
+      'index.js',
     ],
   },
   eslint.configs.recommended,
@@ -158,6 +160,12 @@ export default tseslint.config(
       'prefer-const': ['error', { destructuring: 'all' }],
       radix: 'error',
       'default-case': 'error',
+    },
+  },
+  {
+    files: ['**/*.tsx'],
+    rules: {
+      'react/prop-types': 'off',
     },
   },
   {

@@ -10,7 +10,7 @@ import { theme } from '../semantic-colors.js';
 import { useEffect, useState } from 'react';
 
 export const WaitingForInputIndicator: React.FC = () => {
-  const [show, setShow] = useState(false);
+  const [show, setShow] = useState(true);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -19,13 +19,9 @@ export const WaitingForInputIndicator: React.FC = () => {
     return () => clearInterval(interval);
   }, []);
 
-  if (!show) {
-    return null;
-  }
-
   return (
     <Box marginRight={1}>
-      <Text color={theme.status.success}>●</Text>
+      <Text color={theme.status.success}>{show ? '▓▓▓▓▓▓▓▓' : '        '}</Text>
     </Box>
   );
 };

@@ -18,11 +18,11 @@ import { resolvePath } from '../utils/resolvePath.js';
 import { isWorkspaceTrusted } from './trustedFolders.js';
 // Simple console logger for now - replace with actual logger if available
 const logger = {
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     debug: (...args) => console.debug('[DEBUG]', ...args),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     warn: (...args) => console.warn('[WARN]', ...args),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+     
     error: (...args) => console.error('[ERROR]', ...args),
 };
 export async function parseArguments() {
